@@ -4,13 +4,16 @@ Defimax is an OpenClaw/Codex skill for DeFi yield discovery, Pendle PT/YT/LP mon
 
 ## Skill Path
 
-The Skill Builder package lives in:
+The Skill Builder package lives at the repository root:
 
 ```text
-defimax/
+SKILL.md
+agents/
+references/
+scripts/
 ```
 
-This keeps the runtime skill folder clean. `README.md` stays at the repository root because the Skill Builder package itself should contain only `SKILL.md`, optional `agents/`, `references/`, `scripts/`, and assets.
+That is the direct Skill Builder layout. `README.md` is only for GitHub repository context; the runtime skill entrypoint is `SKILL.md`.
 
 ## What It Does
 
@@ -34,21 +37,18 @@ $defimax
 Run from the skill directory:
 
 ```bash
-cd defimax
 python3 scripts/yield_monitor.py --stable-only --risk-profile balanced --min-tvl-usd 5000000 --limit 10
 ```
 
 Preview Telegram delivery:
 
 ```bash
-cd defimax
 python3 scripts/telegram_delivery.py --dry-run --stable-only --risk-profile balanced --min-tvl-usd 5000000 --limit 6
 ```
 
 Monitor wallet loops:
 
 ```bash
-cd defimax
 python3 scripts/position_monitor.py wizard --config ~/.config/defimax/config.json
 python3 scripts/position_monitor.py monitor --config ~/.config/defimax/config.json
 ```
