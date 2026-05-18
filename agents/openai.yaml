@@ -1,0 +1,4 @@
+interface:
+  display_name: "Defimax"
+  short_description: "Monitora yields, PT/YT loops e alertas"
+  default_prompt: "Use $defimax para buscar yields DeFi, monitorar loops PT/YT e preparar alertas recorrentes."
