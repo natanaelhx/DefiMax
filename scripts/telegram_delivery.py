@@ -45,8 +45,27 @@ def compact_flags(flags: list[str], max_items: int = 3) -> str:
     return ", ".join(shown) + suffix
 
 
+def opportunity_line(index: int, item: dict[str, Any]) -> list[str]:
+    flags = item.get("riskFlags") or []
+    expiry = f" | vence {item['expiry']}" if item.get("expiry") else ""
+    liquidity = item.get("liquidityUsd") or 0
+    liquidity_text = f" | liq {yield_monitor.money(liquidity)}" if liquidity else ""
+    return [
+        (
+            f"{index}. {type_emoji(item['positionType'])} {item['project']} "
+            f"{item['symbol']} ({str(item['positionType']).upper()})"
+        ),
+        (
+            f"   🌐 {item['chain']} | APY {item['apy']:.2f}% | "
+            f"TVL {yield_monitor.money(item['tvlUsd'])}{liquidity_text}{expiry}"
+        ),
+        f"   {risk_emoji(flags)} Risco: {compact_flags(flags)}",
+    ]
+
+
 def format_telegram_report(opportunities: list[dict[str, Any]], args: Any) -> str:
     now = dt.datetime.now(dt.timezone.utc).strftime("%d/%m/%Y %H:%M UTC")
+    section_limit = getattr(args, "section_limit", 5)
     lines = [
         "⚡ Defimax Yield Radar",
         f"🕒 {now}",
@@ -61,34 +80,37 @@ def format_telegram_report(opportunities: list[dict[str, Any]], args: Any) -> st
         lines.append("🟡 Nenhuma oportunidade passou nos filtros agora.")
         return "\n".join(lines)
 
-    lines.append("🔥 Top oportunidades agora")
-    for index, item in enumerate(opportunities[: args.limit], start=1):
-        flags = item.get("riskFlags") or []
-        expiry = f" | vence {item['expiry']}" if item.get("expiry") else ""
-        liquidity = item.get("liquidityUsd") or 0
-        liquidity_text = f" | liq {yield_monitor.money(liquidity)}" if liquidity else ""
-        lines.extend(
-            [
-                "",
-                (
-                    f"{index}. {type_emoji(item['positionType'])} {item['project']} "
-                    f"{item['symbol']} ({str(item['positionType']).upper()})"
-                ),
-                (
-                    f"   🌐 {item['chain']} | APY {item['apy']:.2f}% | "
-                    f"TVL {yield_monitor.money(item['tvlUsd'])}{liquidity_text}{expiry}"
-                ),
-                f"   {risk_emoji(flags)} Risco: {compact_flags(flags)}",
-            ]
-        )
+    grouped: dict[str, list[dict[str, Any]]] = {"pool": [], "pt": [], "yt": [], "lp": []}
+    for item in opportunities:
+        position_type = str(item.get("positionType") or "").lower()
+        if position_type in grouped:
+            grouped[position_type].append(item)
+
+    sections = [
+        ("🏦 Pools DeFi", grouped["pool"]),
+        ("🔒 PT / yield fixo", grouped["pt"]),
+        ("🔥 YT / Yield Tokens", grouped["yt"]),
+        ("💧 LP de yield", grouped["lp"]),
+    ]
+
+    for title, items in sections:
+        lines.extend([title, f"Total no filtro: {len(items)}"])
+        if not items:
+            lines.extend(["   Nenhum item passou nos filtros/ranking atuais.", ""])
+            continue
+        for index, item in enumerate(items[:section_limit], start=1):
+            lines.extend(opportunity_line(index, item))
+        if len(items) > section_limit:
+            lines.append(f"   …+{len(items) - section_limit} fora do preview")
+        lines.append("")
 
     lines.extend(
         [
-            "",
             "🧠 Leitura Defimax",
-            "🔒 PT = yield fixo até vencimento; conferir liquidez e data.",
-            "🔥 YT = exposição ao yield variável; risco maior e principal não é resgatável.",
-            "💧 LP = inclui risco de pool, fee, incentivos e profundidade.",
+            "🔒 PT = yield fixo até vencimento; conferir desconto, liquidez e data.",
+            "🔥 YT = compra do fluxo de yield; principal não é resgatável e APY pode oscilar muito.",
+            "💧 LP = risco de pool, fee, incentivos, profundidade e saída.",
+            "🏦 Pools = variável; checar fonte do yield, incentivos e risco de protocolo.",
             "",
             "⚠️ Não é recomendação financeira. Antes de agir: app oficial, contrato, slippage, gas, bridge/oracle/depeg e liquidez de saída.",
         ]
@@ -122,13 +144,15 @@ def main() -> int:
     parser.description = "Send an emoji-formatted Defimax yield report to Telegram."
     parser.set_defaults(stable_only=True, min_tvl_usd=5_000_000, limit=8, risk_profile="balanced")
     parser.add_argument("--dry-run", action="store_true", help="Print the Telegram payload without sending.")
+    parser.add_argument("--section-limit", type=int, default=5, help="Max items to show per report section.")
     parser.add_argument("--bot-token-env", default="TELEGRAM_BOT_TOKEN")
     parser.add_argument("--chat-id-env", default="TELEGRAM_CHAT_ID")
     args = parser.parse_args()
 
     raw = yield_monitor.load_defillama_input(args)
     pendle_markets = yield_monitor.load_pendle_markets(args)
-    opportunities = yield_monitor.rank_pools(raw, pendle_markets, args)
+    solana_yield_markets = yield_monitor.load_solana_yield_markets(args)
+    opportunities = yield_monitor.rank_pools(raw, pendle_markets, solana_yield_markets, args)
     text = format_telegram_report(opportunities, args)
 
     if args.dry_run:

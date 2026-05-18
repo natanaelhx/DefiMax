@@ -17,6 +17,7 @@ from typing import Any
 
 DEFILLAMA_POOLS_URL = "https://yields.llama.fi/pools"
 PENDLE_MARKETS_URL = "https://api-v2.pendle.finance/core/v2/markets/all"
+SOLANA_YIELD_MARKETS_URL_ENV = "DEFIMAX_SOLANA_YIELD_MARKETS_URL"
 USER_AGENT = "defimax/1.0"
 
 CHAIN_NAMES = {
@@ -151,8 +152,50 @@ SELF_TEST_PENDLE_MARKETS = [
     }
 ]
 
+SELF_TEST_SOLANA_YIELD_MARKETS = [
+    {
+        "protocol": "exponent",
+        "market": "USX",
+        "positionType": "pt",
+        "symbol": "PT-USX-01JUN26",
+        "expiry": "2026-06-01",
+        "apy": 6.13,
+        "tvlUsd": 5_000_000,
+        "liquidityUsd": 1_100_000,
+        "stablecoin": True,
+        "sourceUrl": "https://app.exponent.finance/income",
+        "extraFlags": ["solana-pt-market"],
+    },
+    {
+        "protocol": "exponent",
+        "market": "eUSX",
+        "positionType": "yt",
+        "symbol": "YT-eUSX-01JUN26",
+        "expiry": "2026-06-01",
+        "apy": 18.4,
+        "tvlUsd": 3_200_000,
+        "liquidityUsd": 850_000,
+        "stablecoin": True,
+        "sourceUrl": "https://app.exponent.finance/farm",
+        "extraFlags": ["solana-yt-market"],
+    },
+    {
+        "protocol": "ratex",
+        "market": "xSOL",
+        "positionType": "pt",
+        "symbol": "PT-xSOL-30JUN26",
+        "expiry": "2026-06-30",
+        "apy": 9.2,
+        "tvlUsd": 4_500_000,
+        "liquidityUsd": 1_400_000,
+        "stablecoin": False,
+        "sourceUrl": "https://app.rate-x.io/earn/fixed-yield?symbol=xSOL",
+        "extraFlags": ["solana-pt-market"],
+    },
+]
 
-def fetch_json(url: str, timeout: int = 25) -> dict[str, Any]:
+
+def fetch_json(url: str, timeout: int = 25) -> Any:
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -204,6 +247,31 @@ def load_pendle_markets(args: argparse.Namespace) -> list[dict[str, Any]]:
     return markets[: args.pendle_max_markets]
 
 
+def extract_market_list(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+    if isinstance(payload, dict):
+        for key in ("markets", "results", "data", "items"):
+            value = payload.get(key)
+            if isinstance(value, list):
+                return [item for item in value if isinstance(item, dict)]
+        return [payload]
+    return []
+
+
+def load_solana_yield_markets(args: argparse.Namespace) -> list[dict[str, Any]]:
+    if args.no_solana_yield_markets:
+        return []
+    if args.self_test:
+        return SELF_TEST_SOLANA_YIELD_MARKETS
+    if args.solana_yield_input_json:
+        with open(args.solana_yield_input_json, "r", encoding="utf-8") as handle:
+            return extract_market_list(json.load(handle))
+    if args.solana_yield_url:
+        return extract_market_list(fetch_json(args.solana_yield_url))
+    return []
+
+
 def safe_float(value: Any, default: float = 0.0) -> float:
     if value is None or value == "":
         return default
@@ -220,6 +288,14 @@ def normalized_set(raw: str | None) -> set[str]:
     if not raw:
         return set()
     return {item.strip().lower() for item in raw.split(",") if item.strip()}
+
+
+def list_of_strings(value: Any) -> list[str]:
+    if isinstance(value, list):
+        return [str(item) for item in value if str(item).strip()]
+    if value in (None, ""):
+        return []
+    return [str(value)]
 
 
 def truthy(value: Any) -> bool:
@@ -240,6 +316,25 @@ def il_risk(value: Any) -> bool:
 
 def decimal_to_percent(value: Any) -> float:
     return safe_float(value) * 100.0
+
+
+def first_present(raw: dict[str, Any], keys: tuple[str, ...], default: Any = None) -> Any:
+    for key in keys:
+        value = raw.get(key)
+        if value not in (None, ""):
+            return value
+    return default
+
+
+def apy_field_to_percent(raw: dict[str, Any], keys: tuple[str, ...]) -> float:
+    value = first_present(raw, keys)
+    apy = safe_float(value)
+    if not apy:
+        return 0.0
+    format_hint = str(raw.get("apyFormat") or raw.get("rateFormat") or "").lower()
+    if truthy(raw.get("apyIsDecimal")) or format_hint in {"decimal", "ratio"}:
+        return apy * 100.0
+    return apy
 
 
 def chain_name(chain_id: Any) -> str:
@@ -265,6 +360,15 @@ def short_expiry(expiry: Any) -> str:
     if not expiry:
         return ""
     return str(expiry).split("T", 1)[0]
+
+
+def active_or_undated(expiry: Any) -> bool:
+    if not expiry:
+        return True
+    normalized = str(expiry)
+    if "T" not in normalized and len(normalized) == 10:
+        normalized = f"{normalized}T23:59:59.000Z"
+    return is_active_expiry(normalized)
 
 
 def pool_apy(pool: dict[str, Any]) -> float:
@@ -305,7 +409,7 @@ def risk_flags(pool: dict[str, Any], apy: float, tvl: float, args: argparse.Name
         flags.append("pendle-lp")
     liquidity = safe_float(pool.get("liquidityUsd"))
     if liquidity and liquidity < args.min_tvl_usd:
-        flags.append("low-pendle-liquidity")
+        flags.append("low-market-liquidity")
     return sorted(dict.fromkeys(flags))
 
 
@@ -464,6 +568,104 @@ def pendle_opportunities(markets: list[dict[str, Any]], args: argparse.Namespace
     return opportunities
 
 
+def solana_yield_opportunities(
+    markets: list[dict[str, Any]], args: argparse.Namespace
+) -> list[dict[str, Any]]:
+    opportunities: list[dict[str, Any]] = []
+    for market in markets:
+        position_type = str(
+            first_present(market, ("positionType", "type", "tokenType", "side"), "pt")
+        ).strip().lower()
+        type_aliases = {
+            "principal": "pt",
+            "principal-token": "pt",
+            "principal_token": "pt",
+            "income": "pt",
+            "income-token": "pt",
+            "income_token": "pt",
+            "fixed": "pt",
+            "fixed-yield": "pt",
+            "yield": "yt",
+            "yield-token": "yt",
+            "yield_token": "yt",
+            "farm": "yt",
+            "floating": "yt",
+            "floating-yield": "yt",
+            "liquidity": "lp",
+        }
+        position_type = type_aliases.get(position_type, position_type)
+        if position_type not in {"pt", "yt", "lp"}:
+            continue
+
+        expiry_raw = first_present(market, ("expiry", "maturity", "maturityDate", "expiresAt"))
+        if not active_or_undated(expiry_raw):
+            continue
+        expiry = short_expiry(expiry_raw)
+
+        apy_keys = {
+            "pt": ("apy", "fixedApy", "impliedApy", "ptApy", "incomeApy"),
+            "yt": ("apy", "floatingApy", "ytApy", "yieldApy", "impliedApy"),
+            "lp": ("apy", "aggregatedApy", "lpApy", "poolApy"),
+        }[position_type]
+        apy = apy_field_to_percent(market, apy_keys)
+        if apy <= 0:
+            continue
+
+        protocol = str(
+            first_present(market, ("protocol", "project", "sourceProtocol"), "solana-yield")
+        ).strip().lower()
+        market_name = str(
+            first_present(market, ("market", "name", "underlying", "asset"), "unknown")
+        ).strip()
+        symbol = str(first_present(market, ("symbol", "token", "mintSymbol"), "")).strip()
+        if not symbol:
+            symbol = f"{position_type.upper()}-{market_name}"
+        categories = market.get("categoryIds") if isinstance(market.get("categoryIds"), list) else []
+        stable = truthy(market.get("stablecoin")) or looks_stable(symbol, categories)
+        tvl = safe_float(first_present(market, ("tvlUsd", "tvl", "marketTvlUsd", "totalTvl")))
+        liquidity = safe_float(first_present(market, ("liquidityUsd", "liquidity", "depthUsd")))
+        source_url = first_present(market, ("sourceUrl", "url", "appUrl", "marketUrl"))
+        supplied_id = str(first_present(market, ("pool", "id", "address", "marketAddress", "mint"), ""))
+        pool_id = supplied_id or f"solana-yield:{protocol}:{symbol}:{expiry or 'open'}:{position_type}"
+        extra_flags = list_of_strings(market.get("extraFlags"))
+        extra_flags.extend(["solana", "indexed-source"])
+        if source_url:
+            extra_flags.append("source-url")
+        if position_type == "pt":
+            extra_flags.append("solana-pt-market")
+            meta = f"Solana PT/fixed yield / maturity {expiry or 'n/a'}"
+        elif position_type == "yt":
+            extra_flags.append("solana-yt-market")
+            meta = f"Solana YT/floating yield / maturity {expiry or 'n/a'}"
+        else:
+            extra_flags.append("solana-lp-market")
+            meta = f"Solana yield LP / maturity {expiry or 'n/a'}"
+
+        opportunities.append(
+            {
+                "pool": pool_id,
+                "source": "solana-yield-index",
+                "positionType": position_type,
+                "project": protocol,
+                "chain": "Solana",
+                "symbol": symbol,
+                "poolMeta": meta,
+                "expiry": expiry,
+                "tvlUsd": tvl,
+                "liquidityUsd": liquidity,
+                "stablecoin": stable,
+                "outlier": truthy(market.get("outlier")),
+                "ilRisk": position_type == "lp" or il_risk(market.get("ilRisk")),
+                "exposure": market.get("exposure") or "single",
+                "apy": apy,
+                "apyBase": apy_field_to_percent(market, ("apyBase", "baseApy")) or apy,
+                "apyReward": apy_field_to_percent(market, ("apyReward", "rewardApy", "incentiveApy")),
+                "extraFlags": sorted(dict.fromkeys(extra_flags)),
+            }
+        )
+    return opportunities
+
+
 def passes_filters(item: dict[str, Any], args: argparse.Namespace) -> bool:
     chains = normalized_set(args.chains)
     projects = normalized_set(args.projects)
@@ -497,7 +699,10 @@ def passes_filters(item: dict[str, Any], args: argparse.Namespace) -> bool:
 
 
 def rank_pools(
-    raw: dict[str, Any], pendle_markets: list[dict[str, Any]], args: argparse.Namespace
+    raw: dict[str, Any],
+    pendle_markets: list[dict[str, Any]],
+    solana_yield_markets: list[dict[str, Any]],
+    args: argparse.Namespace,
 ) -> list[dict[str, Any]]:
     pools = raw.get("data", raw)
     if not isinstance(pools, list):
@@ -511,6 +716,7 @@ def rank_pools(
         normalized_pools.append({**pool, "source": "defillama", "positionType": "pool"})
 
     normalized_pools.extend(pendle_opportunities(pendle_markets, args))
+    normalized_pools.extend(solana_yield_opportunities(solana_yield_markets, args))
     ranked = [score_pool(pool, args) for pool in normalized_pools]
     filtered = [item for item in ranked if passes_filters(item, args)]
     filtered.sort(key=lambda item: (item["score"], item["apy"], item["tvlUsd"]), reverse=True)
@@ -699,11 +905,15 @@ def format_markdown(
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Rank DeFi yield opportunities from DefiLlama and Pendle.")
+    parser = argparse.ArgumentParser(
+        description="Rank DeFi yield opportunities from DefiLlama, Pendle, and Solana PT/YT indexes."
+    )
     parser.add_argument("--url", default=os.environ.get("DEFILLAMA_YIELDS_URL", DEFILLAMA_POOLS_URL))
     parser.add_argument("--pendle-url", default=os.environ.get("PENDLE_MARKETS_URL", PENDLE_MARKETS_URL))
+    parser.add_argument("--solana-yield-url", default=os.environ.get(SOLANA_YIELD_MARKETS_URL_ENV))
     parser.add_argument("--input-json", help="Read a saved DefiLlama pools payload instead of fetching.")
     parser.add_argument("--pendle-input-json", help="Read a saved Pendle markets payload instead of fetching.")
+    parser.add_argument("--solana-yield-input-json", help="Read Solana PT/YT markets from indexed JSON.")
     parser.add_argument("--self-test", action="store_true", help="Run against built-in fixture data.")
     parser.add_argument("--json", action="store_true", help="Emit JSON instead of Markdown.")
     parser.add_argument("--limit", type=int, default=15)
@@ -721,6 +931,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--position-types", help="Comma-separated types: pool,pt,yt,lp.")
     parser.add_argument("--no-defillama", action="store_true", help="Disable DefiLlama source.")
     parser.add_argument("--no-pendle", action="store_true", help="Disable native Pendle PT/YT/LP source.")
+    parser.add_argument(
+        "--no-solana-yield-markets",
+        action="store_true",
+        help="Disable Solana PT/YT indexed market source.",
+    )
     parser.add_argument("--keep-defillama-pendle", action="store_true", help="Keep Pendle rows from DefiLlama too.")
     parser.add_argument("--pendle-page-size", type=int, default=100)
     parser.add_argument("--pendle-max-markets", type=int, default=600)
@@ -736,8 +951,9 @@ def main() -> int:
     try:
         raw = load_defillama_input(args)
         pendle_markets = load_pendle_markets(args)
+        solana_yield_markets = load_solana_yield_markets(args)
         previous = load_state(args.state)
-        opportunities = rank_pools(raw, pendle_markets, args)
+        opportunities = rank_pools(raw, pendle_markets, solana_yield_markets, args)
         events = diff_state(previous, opportunities, args)
         if args.state and not args.no_write_state:
             write_state(args.state, opportunities)
@@ -758,6 +974,8 @@ def main() -> int:
                         "positionTypes": args.position_types,
                         "defillama": not args.no_defillama,
                         "pendle": not args.no_pendle,
+                        "solanaYieldMarkets": not args.no_solana_yield_markets,
+                        "solanaYieldUrl": args.solana_yield_url,
                         "limit": args.limit,
                     },
                     "opportunities": opportunities,

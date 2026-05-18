@@ -1,6 +1,6 @@
 ---
 name: defimax
-description: Find, rank, monitor, and prepare alerts for DeFi crypto yield opportunities and configured wallet loops across Pendle PT/YT/LP, DefiLlama Yields, Aave, Morpho, Euler-style lending markets, stablecoin pools, liquid staking, restaking, LP pools, and vault protocols. Use when the user asks Defimax/OpenClaw to scan APY, fixed yield, passive income, farming, DeFi yields, Pendle markets, PT/YT lending loops, health factor, liquidation risk, recurring monitoring every 6 hours or daily, risk-filtered opportunities, Telegram/Discord alerts, cron setup, or guarded transaction/action plans.
+description: Find, rank, monitor, and prepare alerts for DeFi crypto yield opportunities and configured wallet loops across Pendle PT/YT/LP, Solana PT/YT markets such as Exponent/RateX indexed sources, DefiLlama Yields, Aave, Morpho, Euler-style lending markets, stablecoin pools, liquid staking, restaking, LP pools, and vault protocols. Use when the user asks Defimax/OpenClaw to scan APY, fixed yield, passive income, farming, DeFi yields, Pendle markets, Solana yield tokens, PT/YT lending loops, health factor, liquidation risk, recurring monitoring every 6 hours or daily, risk-filtered opportunities, Telegram/Discord alerts, cron setup, or guarded transaction/action plans.
 ---
 
 # Defimax
@@ -22,7 +22,8 @@ Use this skill to discover DeFi yield opportunities, monitor configured PT/YT le
 
 2. Gather yield data:
    - Prefer the installed Pendle skill/tooling for Pendle-specific fixed yield, PT/YT/LP, expiry, points, and external protocol checks.
-   - Run `scripts/yield_monitor.py` for a merged DefiLlama + native Pendle Core API scan.
+   - Run `scripts/yield_monitor.py` for a merged DefiLlama + native Pendle Core + Solana PT/YT indexed-source scan.
+   - For Solana PT/YT markets such as Exponent or RateX, pass a trusted indexed JSON file with `--solana-yield-input-json` or a URL through `DEFIMAX_SOLANA_YIELD_MARKETS_URL` / `--solana-yield-url`.
    - Run `scripts/position_monitor.py` for wallet-specific PT/YT lending loops, health factor, liquidation-risk, history, and alert delivery.
    - Read `references/data-sources.md` before changing endpoints, parsers, or Pendle integration details.
    - Read `references/loop-monitoring.md` before changing loop math, execution guardrails, or wallet-specific monitoring.
@@ -32,15 +33,16 @@ Use this skill to discover DeFi yield opportunities, monitor configured PT/YT le
    - APY, base APY, reward APY, and reward share
    - TVL/liquidity in USD
    - stablecoin flag, impermanent-loss risk, exposure type, outlier flag
-   - Pendle position type: `PT`, `YT`, or `LP`
+   - position type: `PT`, `YT`, `LP`, or generic `pool`
    - Pendle maturity, implied APY, YT floating APY, aggregated LP APY, points, and external integrations when available
+   - Solana PT/YT protocol, market/source URL, maturity, fixed/floating APY, TVL, and liquidity when supplied by the indexer
 
 4. Filter before presenting:
    - default to minimum TVL of at least `$1,000,000` unless the user asks for early-stage opportunities
    - exclude DefiLlama outliers unless the user explicitly wants aggressive scanning
    - flag reward-heavy APYs where most yield comes from incentives
    - flag LP or multi-asset exposure when impermanent loss can matter
-   - separate Pendle `PT`, `YT`, and `LP` opportunities from generic variable DeFi pool yields
+   - separate `PT`, `YT`, and `LP` opportunities from generic variable DeFi pool yields
 
 5. Rank with risk-adjusted scoring:
    - reward sustainable base yield, high TVL, stablecoin exposure, and known protocols
@@ -88,6 +90,18 @@ Pendle YT-only scan:
 
 ```bash
 python3 scripts/yield_monitor.py --no-defillama --position-types yt --limit 10
+```
+
+Solana PT/YT scan from an indexed JSON snapshot:
+
+```bash
+python3 scripts/yield_monitor.py --no-defillama --no-pendle --solana-yield-input-json solana-yield-markets.json --position-types pt,yt --chains solana --min-tvl-usd 1000000 --limit 15
+```
+
+Solana PT/YT scan from an indexer URL:
+
+```bash
+DEFIMAX_SOLANA_YIELD_MARKETS_URL=https://example.com/solana-yield-markets.json python3 scripts/yield_monitor.py --position-types pt,yt --chains solana
 ```
 
 Create a wallet/loop monitoring config:
@@ -186,6 +200,7 @@ Default value priority:
 Supported monitoring surfaces:
 
 - public Pendle PT/YT/LP APYs from Pendle Core
+- Solana PT/YT market APYs from trusted indexed JSON sources for Exponent/RateX-style markets
 - wallet PT/YT/LP balances through ERC-20 `balanceOf` when a public or configured RPC is available
 - Morpho market and wallet position data through Morpho GraphQL when configured
 - Aave V3 real account collateral, debt, LTV, liquidation threshold, and health factor through `getUserAccountData(address)` when RPC and Pool are configured
@@ -197,7 +212,9 @@ Integrated RPC fallbacks are bundled for the main Aave/Pendle/Morpho EVM surface
 
 Aave V3 Pool addresses are bundled where the Aave address book exposes a mainnet `POOL`: Ethereum, Optimism, BNB Chain, Gnosis, Polygon, Sonic, Fantom, ZKsync Era, Metis, Soneium, Mantle, Plasma, Base, Arbitrum, Celo, Avalanche, Linea, Scroll, and Harmony. Same-chain specialized Aave markets, such as Ethereum Lido/EtherFi, should be added as explicit extra loop configs to avoid duplicate wallet discovery.
 
-Solana mainnet RPC is bundled for health checks and future adapters. `discover-wallet` accepts Solana wallet addresses and reports adapter status, but do not claim Solana DeFi position discovery is complete until a Solana-specific adapter is added for the target protocol, such as Meteora DLMM/DAMM v2, Kamino, Drift, MarginFi, Jupiter, or another indexed source. Solana does not use EVM `eth_call`, ERC-20 `balanceOf`, Aave Pool, Pendle PT/YT, or Morpho Blue adapters.
+Solana mainnet RPC is bundled for health checks and future adapters. `discover-wallet` accepts Solana wallet addresses and reports adapter status, but do not claim Solana DeFi position discovery is complete until a Solana-specific adapter is added for the target protocol, such as Exponent, RateX, Meteora DLMM/DAMM v2, Kamino, Drift, MarginFi, Jupiter, or another indexed source. Solana does not use EVM `eth_call`, ERC-20 `balanceOf`, Aave Pool, Pendle PT/YT, or Morpho Blue adapters. Solana PT/YT market ranking is supported through the Solana yield index input, not by treating Solana markets as Pendle markets.
+
+Do not scrape protected Solana app pages and then invent missing APY, TVL, liquidity, expiry, or depth. If Exponent/RateX data is unavailable from a trusted API/export/indexer, report that the source is missing and keep the market out of ranked live opportunities.
 
 For Euler-style markets, configure the loop using vault/pair data, collateral, debt, LTV, LLTV, borrow APY, and health thresholds. Treat Euler as config-driven until a protocol-specific adapter for the target vault is added.
 
@@ -240,6 +257,17 @@ For Pendle-focused requests:
 8. Prefer cross-chain Pendle core API endpoints for custom integrations; avoid Pendle BFF endpoints.
 
 Use Pendle outputs as explicit position types because fixed maturity PT yield, YT exposure, and LP positions have different risk semantics than generic lending/vault APYs.
+
+## Solana PT/YT Procedure
+
+For Solana fixed-yield or yield-token requests:
+
+1. Use `--solana-yield-input-json` or `DEFIMAX_SOLANA_YIELD_MARKETS_URL` to load Exponent/RateX-style indexed markets.
+2. Normalize Income Token/fixed-yield markets as `PT` and Farm/yield-token markets as `YT`.
+3. Require real APY, TVL/liquidity, chain, symbol, and maturity from the indexer before ranking.
+4. Rank Solana `PT` by fixed/implied APY and flag maturity and indexed-source risk.
+5. Rank Solana `YT` separately and always flag principal-not-redeemable/floating-yield risk.
+6. Include the official source/app URL when supplied so the user can verify market depth and route before any action.
 
 ## Scheduling Guidance
 

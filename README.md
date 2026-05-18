@@ -1,6 +1,6 @@
 # Defimax
 
-Defimax is an OpenClaw/Codex skill for DeFi yield discovery, Pendle PT/YT/LP monitoring, lending-loop risk checks, and Telegram-ready alerts.
+Defimax is an OpenClaw/Codex skill for DeFi yield discovery, Pendle and Solana PT/YT/LP monitoring, lending-loop risk checks, and Telegram-ready alerts.
 
 ## Skill Path
 
@@ -19,6 +19,7 @@ That is the direct Skill Builder layout. `README.md` is only for GitHub reposito
 
 - Scans DeFi yield opportunities using DefiLlama Yields and Pendle Core.
 - Splits Pendle markets into `PT`, `YT`, and `LP` rows.
+- Loads Solana `PT`/`YT` markets from indexed JSON sources for Exponent/RateX-style markets.
 - Monitors configured wallet loops with LTV, health factor, net APY, slippage/gas impact, and maturity risk.
 - Reads Aave V3 account data when RPC and Pool address are configured.
 - Reads Morpho market/user data through Morpho GraphQL.
@@ -38,6 +39,12 @@ Run from the skill directory:
 
 ```bash
 python3 scripts/yield_monitor.py --stable-only --risk-profile balanced --min-tvl-usd 5000000 --limit 10
+```
+
+Scan Solana PT/YT markets from an indexer or exported snapshot:
+
+```bash
+python3 scripts/yield_monitor.py --no-defillama --no-pendle --solana-yield-input-json solana-yield-markets.json --position-types pt,yt --chains solana
 ```
 
 Preview Telegram delivery:

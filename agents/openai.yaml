@@ -1,4 +1,4 @@
 interface:
   display_name: "Defimax"
-  short_description: "Monitora yields, PT/YT loops e alertas"
-  default_prompt: "Use $defimax para buscar yields DeFi, monitorar loops PT/YT e preparar alertas recorrentes."
+  short_description: "Monitora yields, PT/YT Solana/Pendle e alertas"
+  default_prompt: "Use $defimax para buscar yields DeFi, monitorar PT/YT de Pendle/Solana, acompanhar loops e preparar alertas recorrentes."

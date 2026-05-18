@@ -40,6 +40,49 @@ Use `details.totalTvl` for TVL and `details.liquidity` as a separate liquidity s
 
 Pendle supported chains are read from the live Pendle Core markets API and chain IDs. Do not hardcode the scan to only Ethereum/Base/Arbitrum; current deployments include Ethereum, Optimism, BNB Chain, Sonic, HyperEVM, Mantle, Base, Arbitrum, Berachain, Monad, Katana, and Ink.
 
+## Solana PT/YT Markets
+
+Solana PT/YT markets are not Pendle EVM markets. Treat them as a separate indexed source and normalize them into the same Defimax opportunity shape only after a trusted feed provides real APY, TVL/liquidity, maturity, symbol, protocol, and source URL.
+
+Current Solana PT/YT targets:
+
+- Exponent Income: fixed-yield Income Token markets, normalized as `PT`.
+- Exponent Farm: Yield Token markets, normalized as `YT`.
+- RateX fixed/floating yield markets: normalize Principal Token markets as `PT` and Yield Token exposure as `YT` when the feed provides real market fields.
+
+Useful official/user-facing URLs:
+
+- `https://app.exponent.finance/income`
+- `https://docs.exponent.finance/income`
+- `https://docs.exponent.finance/farm`
+- `https://app.rate-x.io/earn/fixed-yield?symbol=xSOL`
+- `https://docs.rate-x.io/ratex/ratex-protocol/basic-concepts-of-yield-trading/pt-principal-token`
+
+Automation note: some app pages are protected or rendered client-side, so do not rely on scraping them for production APY. Prefer an official API, an internal indexer, or an exported JSON snapshot. If the source does not expose real APY or liquidity, leave the market out of ranked live opportunities instead of using stale or guessed values.
+
+Accepted indexed JSON shape:
+
+```json
+{
+  "markets": [
+    {
+      "protocol": "exponent",
+      "market": "USX",
+      "positionType": "pt",
+      "symbol": "PT-USX-01JUN26",
+      "expiry": "2026-06-01",
+      "apy": 6.13,
+      "tvlUsd": 5000000,
+      "liquidityUsd": 1100000,
+      "stablecoin": true,
+      "sourceUrl": "https://app.exponent.finance/income"
+    }
+  ]
+}
+```
+
+Alternative field aliases accepted by `yield_monitor.py` include `type`, `tokenType`, `fixedApy`, `impliedApy`, `floatingApy`, `ytApy`, `marketTvlUsd`, `totalTvl`, `depthUsd`, `maturity`, `marketAddress`, and `mint`. If a feed uses decimal APY values, set `apyIsDecimal: true` or `apyFormat: "decimal"`.
+
 ## Protocol Network Catalogs
 
 Use official sources when refreshing network support:

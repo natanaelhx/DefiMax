@@ -1,0 +1,22 @@
+{
+  "name": "defimax",
+  "version": "0.1.2",
+  "description": "Find, rank, monitor and prepare alerts for DeFi yield opportunities and wallet loop risks using DefiLlama, Pendle, Solana PT/YT indexes, Aave, Morpho and related protocols.",
+  "author": "QuickClaw-Skills",
+  "license": "Proprietary",
+  "homepage": "https://github.com/QuickClaw-Skills/skill-defi-max",
+  "min_openclaw_version": "2026.4.0",
+  "runtime": "openclaw",
+  "entry": ".",
+  "permissions": {
+    "allow": ["group:fs", "group:network"],
+    "elevated": [],
+    "deny": []
+  },
+  "dependencies": {
+    "bins": ["python3"],
+    "env": []
+  },
+  "pricing_tier": "free",
+  "tags": ["defi", "yield", "pendle", "solana", "aave", "morpho", "risk-monitoring", "crypto"]
+}

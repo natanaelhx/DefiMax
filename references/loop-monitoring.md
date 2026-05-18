@@ -13,6 +13,7 @@ The monitor supports:
 - live Morpho `marketPosition` reads by wallet + market unique key
 - Aave V3 `getUserAccountData(address)` reads when RPC and Pool address are configured
 - Pendle PT/YT/LP ERC-20 balance discovery when RPC is available
+- Solana PT/YT market ranking from indexed opportunity feeds; wallet position discovery still needs a Solana protocol adapter
 - health-factor/LTV/net-APY alerting
 - SQLite history
 - Telegram and Discord webhook delivery
@@ -97,6 +98,7 @@ Solana is a separate RPC family. The config includes Solana mainnet RPC fallback
 
 Solana adapter targets include:
 
+- Exponent/RateX PT/YT: use a trusted Solana yield indexer for markets first; wallet balances require protocol/account parsers before claiming live loop monitoring.
 - Meteora DLMM: use program ID `LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo`, pool list `https://dlmm-api.meteora.ag/pair/all`, and the Meteora DLMM SDK `getAllLbPairPositionsByUser(connection, userPubKey)` for wallet positions.
 - Meteora DAMM v2: add as a separate adapter because its account model differs from DLMM.
 - Kamino, Drift, MarginFi, and Jupiter: add protocol-specific parsers or indexer-backed readers before claiming live wallet monitoring.
